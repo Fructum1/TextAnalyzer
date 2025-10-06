@@ -30,7 +30,6 @@ class RussianNormalizer:
                 
                 if current_word in my_stem_result:
                     analyze_result = my_stem_result[current_word]
-                    print(analyze_result)
                     lemma = analyze_result.lemma
                     
                     if lemma is not None and lemma not in self._stop_words:

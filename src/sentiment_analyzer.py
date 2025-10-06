@@ -55,7 +55,6 @@ class SentimentAnalyzer:
         
         for i, token in enumerate(tokens):
             token_value = token.value
-            print(token_value)
             if token_value in self._lexicon:
                 
                 word_score = self._lexicon[token_value]
