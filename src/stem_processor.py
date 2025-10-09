@@ -173,7 +173,7 @@ class MyStemProcessor:
             "/usr/local/bin/mystem",
         ]
         
-        current_dir = os.getcwd()
+        current_dir = os.path.dirname(os.path.realpath(__file__))
         possible_paths.append(os.path.join(current_dir, "mystem"))
         possible_paths.append(os.path.join(current_dir, "mystem.exe"))
 

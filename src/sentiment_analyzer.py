@@ -206,7 +206,7 @@ class SentimentAnalyzer:
     def _load_tonal_lexicon(self) -> None:
         """Загружает тональный словарь из файла в формате VADER"""
         try:
-            lexicon_path = os.path.join(os.getcwd(), "vader_lexicon.txt")
+            lexicon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "vader_lexicon.txt")
             
             if not os.path.exists(lexicon_path):
                 print(f"Файл словаря не найден: {lexicon_path}")
@@ -236,7 +236,7 @@ class SentimentAnalyzer:
             print(f"Ошибка при чтении файла словаря: {ex}")
             """Загружает тональный словарь из файла"""
             try:
-                lexicon_path = os.path.join(os.getcwd(), "vader_lexicon.txt")
+                lexicon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "vader_lexicon.txt")
                 
                 if not os.path.exists(lexicon_path):
                     print(f"Файл словаря не найден: {lexicon_path}")
