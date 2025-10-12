@@ -2,10 +2,15 @@ import asyncio
 import json
 import subprocess
 import re
+import platform
+import zipfile
+import tarfile
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import sys
 import os
+import urllib.request
+import shutil
 
 
 @dataclass
@@ -18,7 +23,89 @@ class Result:
 
 class MyStemProcessor:
     def __init__(self, mystem_path: Optional[str] = None):
-        self.mystem_path = mystem_path or self._find_mystem()
+        self.mystem_path = mystem_path
+        if not self.mystem_path:
+            self.mystem_path = self._find_or_download_mystem()
+    
+    def _download_mystem(self) -> str:
+        system = platform.system().lower()
+        arch = platform.machine().lower()
+        
+        if system == "windows":
+            url = "https://download.cdn.yandex.net/mystem/mystem-3.1-win-64bit.zip"
+            archive_name = "mystem.zip"
+            executable_name = "mystem.exe"
+        elif system == "darwin":
+            if "arm" in arch:
+                url = "https://download.cdn.yandex.net/mystem/mystem-3.1-macosx-11-arm64.tar.gz"
+            else:  # Intel Mac
+                url = "https://download.cdn.yandex.net/mystem/mystem-3.1-macosx-10.12.tar.gz"
+            archive_name = "mystem.tar.gz"
+            executable_name = "mystem"
+        else:
+            url = "https://download.cdn.yandex.net/mystem/mystem-3.1-linux-64bit.tar.gz"
+            archive_name = "mystem.tar.gz"
+            executable_name = "mystem"
+        
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        mystem_dir = os.path.join(current_dir, "mystem_bin")
+        os.makedirs(mystem_dir, exist_ok=True)
+        
+        archive_path = os.path.join(mystem_dir, archive_name)
+        executable_path = os.path.join(mystem_dir, executable_name)
+        
+        print(f"Загрузка MyStem из {url}...")
+        try:
+            urllib.request.urlretrieve(url, archive_path)
+            print("Загрузка выполнена успешно.")
+        except Exception as e:
+            raise Exception(f"Ошибка загрузки MyStem: {e}")
+        
+        try:
+            if archive_path.endswith('.zip'):
+                with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                    zip_ref.extractall(mystem_dir)
+            else:
+                with tarfile.open(archive_path, 'r:gz') as tar_ref:
+                    tar_ref.extractall(mystem_dir)
+            print("Распаковка выполнена успешно.")
+        except Exception as e:
+            raise Exception(f"Ошибка при распаковки MyStem: {e}")
+        
+        # Удаляем архив
+        try:
+            os.remove(archive_path)
+        except:
+            pass
+        
+        if system != "windows":
+            try:
+                os.chmod(executable_path, 0o755)
+            except Exception as e:
+                print(f"MyStem невозможно сделать исполняемым: {e}")
+        
+        # Проверяем, что файл существует и доступен
+        if not os.path.exists(executable_path):
+            # Ищем распакованный файл
+            for file in os.listdir(mystem_dir):
+                if file.lower().startswith('mystem') and not file.endswith('.exe' if system == 'windows' else '.dll'):
+                    candidate = os.path.join(mystem_dir, file)
+                    if os.path.isfile(candidate):
+                        executable_path = candidate
+                        break
+        
+        if not os.path.exists(executable_path):
+            raise FileNotFoundError(f"MyStem не найден после распаковки по пути {mystem_dir}")
+        
+        return executable_path
+    
+    def _find_or_download_mystem(self) -> str:
+        existing_path = self._find_mystem()
+        if existing_path:
+            return existing_path
+        
+        print("MyStem не найден. Скачивание...")
+        return self._download_mystem()
     
     async def analyze_text(self, text: str) -> Dict[str, Result]:
         results = {}
@@ -35,7 +122,6 @@ class MyStemProcessor:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            # Отправляем текст в mystem
             stdout, stderr = await process.communicate(
                 text.encode('utf-8')
             )
@@ -163,22 +249,46 @@ class MyStemProcessor:
         return pos_map.get(first_part, "UNKN")
     
     def _find_mystem(self) -> Optional[str]:
-        """Ищет исполняемый файл mystem в системе"""
-        possible_paths = [
-            "mystem",
-            "mystem.exe",
-            "./mystem",
-            "./mystem.exe",
-            "/usr/bin/mystem",
-            "/usr/local/bin/mystem",
-        ]
-        
+        system = platform.system().lower()
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        possible_paths.append(os.path.join(current_dir, "mystem"))
-        possible_paths.append(os.path.join(current_dir, "mystem.exe"))
-
+        
+        possible_paths = []
+        
+        if system == "windows":
+            possible_paths.extend([
+                "mystem.exe",
+                "./mystem.exe",
+                os.path.join(current_dir, "mystem.exe"),
+            ])
+        else:
+            possible_paths.extend([
+                "mystem",
+                "./mystem", 
+                "/usr/bin/mystem",
+                "/usr/local/bin/mystem",
+                os.path.join(current_dir, "mystem"),
+            ])
+        
+        mystem_bin_dir = os.path.join(current_dir, "mystem_bin")
+        if os.path.exists(mystem_bin_dir):
+            for file in os.listdir(mystem_bin_dir):
+                file_path = os.path.join(mystem_bin_dir, file)
+                if os.path.isfile(file_path):
+                    if system == "windows" and file.endswith('.exe'):
+                        possible_paths.append(file_path)
+                    elif system != "windows" and not file.endswith('.exe'):
+                        possible_paths.append(file_path)
+        
         for path in possible_paths:
-            if os.path.exists(path) and os.access(path, os.X_OK):
+            if os.path.exists(path):
+                if system == "windows" and not path.endswith('.exe'):
+                    continue
+
+                if system != "windows" and not os.access(path, os.X_OK):
+                    try:
+                        os.chmod(path, 0o755)
+                    except:
+                        continue
                 return path
         
         return None
