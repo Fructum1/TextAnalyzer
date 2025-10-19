@@ -84,9 +84,7 @@ class MyStemProcessor:
             except Exception as e:
                 print(f"MyStem невозможно сделать исполняемым: {e}")
         
-        # Проверяем, что файл существует и доступен
         if not os.path.exists(executable_path):
-            # Ищем распакованный файл
             for file in os.listdir(mystem_dir):
                 if file.lower().startswith('mystem') and not file.endswith('.exe' if system == 'windows' else '.dll'):
                     candidate = os.path.join(mystem_dir, file)
@@ -220,7 +218,6 @@ class MyStemProcessor:
     
     @staticmethod
     def is_valid_russian_text(text: str) -> bool:
-        """Проверяет, является ли текст валидным русским текстом"""
         russian_pattern = re.compile(r'^[а-яёА-ЯЁ\s\-]+$')
         return bool(russian_pattern.match(text))
     

@@ -9,7 +9,6 @@ class Token:
     is_emoji: bool 
 
 class TextTokenizerEnhanced:
-    # Единый комбинированный паттерн
     comprehensive: ClassVar[re.Pattern] = re.compile(
         r'(?:[:;8=][\-\^]?[)D(PO3]+)|'  # Смайлики ASCII
         r'(?:[\U0001F300-\U0001F5FF])|'  # Символы и пиктограммы

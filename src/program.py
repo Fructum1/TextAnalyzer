@@ -1,121 +1,145 @@
 import asyncio
 import os
 import sys
-from typing import Optional, Callable, Awaitable
+import argparse
+from typing import Optional, Callable, Awaitable, List
+from latent_semantic_analyzer import LatentSemanticAnalyzer
+from sentiment_analyzer import SentimentAnalyzer
 
-# Добавляем текущую директорию в путь для импорта модулей
 sys.path.append(os.path.dirname(__file__))
 
 class Program:
-    def __init__(self):
-        self.exit_keyword = "exit"
-    
-    async def main(self):
-        from sentiment_analyzer import SentimentAnalyzer
-        
-        user_input = ""
-        sentiment_analyzer = SentimentAnalyzer()
-        
-        print("=== Анализатор тональности текста ===")
-        print("Для выхода из программы наберите 'exit'.")
-        
-        while user_input.lower() != self.exit_keyword:
-            await self._with_exception_handling(self._process_iteration, sentiment_analyzer)
-    
-    async def _process_iteration(self, analyzer):
-        print("\n" + "="*50)
-        print("Выберите режим работы:")
-        print("1 - Анализ тональности из файла")
-        print("2 - Анализ тональности из консоли")
-        print("exit - Выход из программы")
-        
-        user_input = input("Ваш выбор: ").strip()
-        
-        if user_input.lower() == self.exit_keyword:
-            print("Программа завершена. До свидания!")
-            exit(0)
-        
-        text = await self._get_text_for_analysis(user_input)
-        
-        if text is None:
-            print("Неверный входной формат. Пожалуйста, выберите 1, 2 или exit.")
-            return
-        
-        print("Анализируем текст...")
-        sentiment_result = await analyzer.analyze(text)
-        
-        print(f"\nРезультат анализа:")
-        print(f"Тональность: {sentiment_result.sentiment}")
-        print(f"Оценка: {sentiment_result.score:.3f}")
-        print(f"Количество слов, учтенных в анализе: {sentiment_result.word_count}")
-    
-    async def _get_text_for_analysis(self, user_input: str) -> Optional[str]:
-        if user_input == "1":
-            return await self._get_text_from_file()
-        elif user_input == "2":
-            return self._get_text_from_console()
-        else:
-            return None
-    
-    async def _get_text_from_file(self) -> Optional[str]:
-        print("Введите полный путь к файлу:")
-        file_path = input().strip()
-        
-        if not file_path:
-            print("Путь к файлу не может быть пустым.")
-            return None
-        
+    async def main(self, modes: list[str], input_file: Optional[str] = None, input_string: Optional[str] = None,
+                   input_files2: Optional[List[str]] = None, input_strings2: Optional[List[str]] = None, 
+                   compare: bool = False, num_topics: int = 2):
+        """
+        :param modes: Список режимов анализа ('sentiment', 'lsa' или оба).
+        :param input_file: Путь к первому файлу (если передан -f).
+        :param input_string: Первая входная строка (если передан -i).
+        :param input_files2: Список путей к дополнительным файлам (если передан -f2).
+        :param input_strings2: Список дополнительных входных строк (если передан -i2).
+        :param compare: Флаг для сравнения документов (только для lsa).
+        :param num_topics: Количество тем для LSA анализа.
+        """
+        valid_modes = {'sentiment', 'lsa'}
+        if not modes or not all(mode in valid_modes for mode in modes):
+            raise ValueError("Режим должен быть 'sentiment', 'lsa' или их комбинация (например, 'sentiment,lsa')")
+
+        documents = []
+
+        if input_file:
+            text = await self._get_text_from_file(input_file)
+            if text is not None:
+                documents.append(text)
+            else:
+                print(f"Предупреждение: не удалось загрузить файл {input_file}")
+
+        if input_string:
+            documents.append(input_string)
+
+        if input_files2:
+            for f in input_files2:
+                text = await self._get_text_from_file(f)
+                if text is not None:
+                    documents.append(text)
+                else:
+                    print(f"Предупреждение: не удалось загрузить файл {f}")
+
+        if input_strings2:
+            for s in input_strings2:
+                if s:
+                    documents.append(s)
+
+        if not documents:
+            raise ValueError("Не удалось получить тексты для анализа. Укажите хотя бы один ввод с -f, -i, -f2 или -i2")
+
+        print(f"\nАнализируем документы...")
+
+        if 'sentiment' in modes:
+            sentiment_analyzer = SentimentAnalyzer()
+            for idx, text in enumerate(documents, 1):
+                print(f"\n=== Результат анализа тональности (для документа {idx}) ===")
+                sentiment_result = await sentiment_analyzer.analyze(text)
+                print(f"Тональность: {sentiment_result.sentiment}")
+                print(f"Оценка: {sentiment_result.score:.3f}")
+                print(f"Количество слов, учтенных в анализе: {sentiment_result.word_count}")
+
+        if 'lsa' in modes:
+            print(f"\n=== Результат анализа LSA (число тем: {num_topics}) ===")
+            lsa = LatentSemanticAnalyzer(documents, num_top_words=5, k=num_topics)
+            await lsa.fit()
+            lsa.print_results()
+
+            if compare:
+                if len(documents) < 2:
+                    print("\nДля сравнения требуется хотя бы два документа")
+                elif lsa.doc_vectors is not None:
+                    try:
+                        for idx in range(1, len(documents)):
+                            similarity = lsa.document_similarity(0, idx)
+                            print(f"\nСемантическое сходство между первым документом и документом {idx + 1}: {similarity:.3f}")
+                    except Exception as e:
+                        print(f"\nОшибка при расчёте сходства: {e}")
+                else:
+                    print("\nНе удалось вычислить векторы документов для сравнения")
+
+    async def _get_text_from_file(self, file_path: str) -> Optional[str]:
+        """
+        Чтение текста из файла с поддержкой разных кодировок.
+
+        :param file_path: Путь к файлу.
+        :return: Текст или None при ошибке.
+        """
         if not os.path.exists(file_path):
             print(f"Файл не найден: {file_path}")
             return None
-        
+
         try:
             encodings = ['utf-8', 'cp1251', 'windows-1251', 'koi8-r']
-            
             for encoding in encodings:
                 try:
                     with open(file_path, 'r', encoding=encoding) as file:
                         lines = file.readlines()
-                    
                     non_empty_lines = [line.strip() for line in lines if line.strip()]
                     text = " ".join(non_empty_lines)
-                    
                     if text:
                         print(f"Файл прочитан успешно ({len(text)} символов)")
                         return text
-                        
                 except UnicodeDecodeError:
                     continue
-            
             print("Не удалось прочитать файл. Возможно, неподдерживаемая кодировка.")
             return None
-            
         except Exception as e:
             print(f"Ошибка чтения файла: {e}")
             return None
-    
-    def _get_text_from_console(self) -> Optional[str]:
-        print("Введите текст для анализа:")
-        text = input().strip()
-        
-        if not text:
-            print("Текст не может быть пустым.")
-            return None
-        
-        return text
-    
+
     async def _with_exception_handling(self, async_action: Callable, *args):
         try:
             await async_action(*args)
         except Exception as ex:
             print(f"Произошла ошибка: {ex}")
 
-
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Анализатор текста: тональность или LSA")
+    parser.add_argument('--mode', type=str, required=True, help="Режим анализа: 'sentiment', 'lsa' или 'sentiment,lsa'")
+    parser.add_argument('-f', '--file', type=str, help="Путь к первому файлу с текстом")
+    parser.add_argument('-i', '--input', type=str, help="Первая входная строка для анализа")
+    parser.add_argument('--compare', action='store_true', help="Флаг для сравнения документов (только для lsa)")
+    parser.add_argument('-f2', '--file2', type=str, nargs='*', help="Пути к дополнительным файлам с текстом")
+    parser.add_argument('-i2', '--input2', type=str, nargs='*', help="Дополнительные входные строки для анализа")
+    parser.add_argument('--num-topics', type=int, default=2, help="Количество тем для LSA анализа (по умолчанию 2)")
+
+    args = parser.parse_args()
+    modes = args.mode.split(',')
+
     program = Program()
     try:
-        asyncio.run(program.main())
-    except KeyboardInterrupt:
-        print("\n\nПрограмма прервана. До свидания!")
+        asyncio.run(program.main(modes, args.file, args.input, args.file2, args.input2, args.compare, args.num_topics))
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(program.main(modes, args.file, args.input, args.file2, args.input2, args.compare, args.num_topics))
+        else:
+            raise e
     except Exception as e:
         print(f"Критическая ошибка: {e}")

@@ -28,23 +28,24 @@ class RussianNormalizer:
             else:
                 current_word = token.value
                 
-                if current_word in my_stem_result:
-                    analyze_result = my_stem_result[current_word]
-                    lemma = analyze_result.lemma
-                    
-                    if lemma is not None and lemma not in self._stop_words:
-                        normalized_word = self._synonyms.get(lemma, lemma)
+                if (current_word not in self._stop_words):
+                    if current_word in my_stem_result:
+                        analyze_result = my_stem_result[current_word]
+                        lemma = analyze_result.lemma
                         
-                        normalized_token = Token(
-                            value=normalized_word,
-                            original_value=token.original_value,
-                            is_emoji=False
-                        )
-                        result.append(normalized_token)
+                        if lemma is not None:
+                            normalized_word = self._synonyms.get(lemma, lemma)
+                            
+                            normalized_token = Token(
+                                value=normalized_word,
+                                original_value=token.original_value,
+                                is_emoji=False
+                            )
+                            result.append(normalized_token)
+                        else:
+                            continue
                     else:
-                        continue
-                else:
-                    result.append(token)
+                        result.append(token)
                 word_index += 1
         
         return result
@@ -69,7 +70,7 @@ class RussianNormalizer:
             # Союзы
             "и", "а", "но", "или", "либо", "ни", "да", "что", "чтобы", "как", "когда", "если",
             "потому", "так", "тоже", "также", "зато", "причем", "причём", "однако", "тем", 
-            "нежели", "словно", "будто", "точно", "если", "хотя", "пусть", "раз", "ли", "ль",
+            "нежели", "словно", "будто", "точно", "если", "хотя", "пусть", "раз", "ли", "ль", ""
             
             # Вводные слова
             "конечно", "безусловно", "несомненно", "очевидно", "вероятно", "возможно", 
