@@ -11,44 +11,51 @@ sys.path.append(os.path.dirname(__file__))
 class Program:
     async def main(self, modes: list[str], input_file: Optional[str] = None, input_string: Optional[str] = None,
                    input_files2: Optional[List[str]] = None, input_strings2: Optional[List[str]] = None, 
-                   compare: bool = False, num_topics: int = 2):
+                   compare_mode: str = "tdidf", num_topics: int = 2):
         """
         :param modes: Список режимов анализа ('sentiment', 'lsa' или оба).
         :param input_file: Путь к первому файлу (если передан -f).
         :param input_string: Первая входная строка (если передан -i).
         :param input_files2: Список путей к дополнительным файлам (если передан -f2).
         :param input_strings2: Список дополнительных входных строк (если передан -i2).
-        :param compare: Флаг для сравнения документов (только для lsa).
+        :param compare_mode: Режим сранвения (только для LSA).
         :param num_topics: Количество тем для LSA анализа.
+        :param top_similar: Флаг для вывода топ схожих документов.
+        :param top_n: Количество топ схожих документов.
         """
         valid_modes = {'sentiment', 'lsa'}
         if not modes or not all(mode in valid_modes for mode in modes):
             raise ValueError("Режим должен быть 'sentiment', 'lsa' или их комбинация (например, 'sentiment,lsa')")
 
         documents = []
+        doc_names = []
 
         if input_file:
             text = await self._get_text_from_file(input_file)
             if text is not None:
                 documents.append(text)
+                doc_names.append(os.path.basename(input_file))
             else:
                 print(f"Предупреждение: не удалось загрузить файл {input_file}")
 
         if input_string:
             documents.append(input_string)
+            doc_names.append("input_1")
 
         if input_files2:
             for f in input_files2:
                 text = await self._get_text_from_file(f)
                 if text is not None:
                     documents.append(text)
+                    doc_names.append(os.path.basename(f))
                 else:
                     print(f"Предупреждение: не удалось загрузить файл {f}")
 
         if input_strings2:
-            for s in input_strings2:
+            for i, s in enumerate(input_strings2, start=2):
                 if s:
                     documents.append(s)
+                    doc_names.append(f"input_{i}")
 
         if not documents:
             raise ValueError("Не удалось получить тексты для анализа. Укажите хотя бы один ввод с -f, -i, -f2 или -i2")
@@ -58,7 +65,7 @@ class Program:
         if 'sentiment' in modes:
             sentiment_analyzer = SentimentAnalyzer()
             for idx, text in enumerate(documents, 1):
-                print(f"\n=== Результат анализа тональности (для документа {idx}) ===")
+                print(f"\n=== Результат анализа тональности (для документа {doc_names[idx-1]}) ===")
                 sentiment_result = await sentiment_analyzer.analyze(text)
                 print(f"Тональность: {sentiment_result.sentiment}")
                 print(f"Оценка: {sentiment_result.score:.3f}")
@@ -70,16 +77,18 @@ class Program:
             await lsa.fit()
             lsa.print_results()
 
-            if compare:
+            if compare_mode:
                 if len(documents) < 2:
                     print("\nДля сравнения требуется хотя бы два документа")
                 elif lsa.doc_vectors is not None:
                     try:
-                        for idx in range(1, len(documents)):
-                            similarity = lsa.document_similarity(0, idx)
-                            print(f"\nСемантическое сходство между первым документом и документом {idx + 1}: {similarity:.3f}")
+                        print(f"\nСхожесть документа {doc_names[0]} с:")
+                        top_docs = lsa.document_similarity(compare_mode, 0)
+                        for rank, (idx, sim) in enumerate(top_docs, 1):
+                            name = doc_names[idx] if idx < len(doc_names) else f"документ {idx+1}"
+                            print(f"{rank}. {name} (схожесть: {sim:.3f})")
                     except Exception as e:
-                        print(f"\nОшибка при расчёте сходства: {e}")
+                        print(f"\nОшибка при поиске похожих документов: {e}")
                 else:
                     print("\nНе удалось вычислить векторы документов для сравнения")
 
@@ -124,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, required=True, help="Режим анализа: 'sentiment', 'lsa' или 'sentiment,lsa'")
     parser.add_argument('-f', '--file', type=str, help="Путь к первому файлу с текстом")
     parser.add_argument('-i', '--input', type=str, help="Первая входная строка для анализа")
-    parser.add_argument('--compare', action='store_true', help="Флаг для сравнения документов (только для lsa)")
+    parser.add_argument('--compare', type=str, help="Параметр для вывода схожести документов (доступные алгоритмы tdidf/w2v)")
     parser.add_argument('-f2', '--file2', type=str, nargs='*', help="Пути к дополнительным файлам с текстом")
     parser.add_argument('-i2', '--input2', type=str, nargs='*', help="Дополнительные входные строки для анализа")
     parser.add_argument('--num-topics', type=int, default=2, help="Количество тем для LSA анализа (по умолчанию 2)")
@@ -134,11 +143,13 @@ if __name__ == "__main__":
 
     program = Program()
     try:
-        asyncio.run(program.main(modes, args.file, args.input, args.file2, args.input2, args.compare, args.num_topics))
+        asyncio.run(program.main(modes, args.file, args.input, args.file2, args.input2,
+                                 args.compare, args.num_topics))
     except RuntimeError as e:
         if "cannot be called from a running event loop" in str(e):
             loop = asyncio.get_event_loop()
-            loop.run_until_complete(program.main(modes, args.file, args.input, args.file2, args.input2, args.compare, args.num_topics))
+            loop.run_until_complete(program.main(modes, args.file, args.input, args.file2, args.input2,
+                                                 args.compare, args.num_topics))
         else:
             raise e
     except Exception as e:

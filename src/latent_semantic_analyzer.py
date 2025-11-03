@@ -4,7 +4,11 @@ from scipy.spatial.distance import cosine
 from collections import Counter
 from tokenizer import Token, TextTokenizerEnhanced
 from normalizer import RussianNormalizer
+from gensim.models import Word2Vec, KeyedVectors
+import multiprocessing
 import asyncio
+import gensim.downloader as api
+import os
 
 class LatentSemanticAnalyzer:
     def __init__(self, documents: list[str], k = None, num_top_words: int = 10, min_df: int = 1, max_df: float = 1.0):
@@ -31,6 +35,7 @@ class LatentSemanticAnalyzer:
         self.word_vectors = None
         self.sigma = None
         self.Vt_k = None
+        self.w2v_model = None
 
     async def fit(self):
         """
@@ -40,6 +45,7 @@ class LatentSemanticAnalyzer:
         self._build_vocabulary_with_filtering()
         self._build_tfidf()
         self._apply_svd()
+        self._train_word2vec()
 
     def get_topic_words(self, topic_idx: int, num_words: int = None) -> list:
         """
@@ -77,7 +83,41 @@ class LatentSemanticAnalyzer:
             words_str = ", ".join([f"{word}({weight:.3f})" for word, weight in topic_words])
             print(f"  Тема {topic_idx+1}: {words_str}")
 
-    def document_similarity(self, doc_idx1: int, doc_idx2: int) -> float:
+    def document_similarity(self, method: str, doc_idx1: int, doc_idx2: int = None):
+        """
+        Считает схожесть между двумя документами.
+        Если указан только doc_idx1 — выводит топ-N наиболее похожих документов.
+        """
+        if method == "tdidf":
+            return self._document_similarity_idf(doc_idx1, doc_idx2)
+        elif method == "w2v":
+            return self._document_similarity_w2v(doc_idx1, doc_idx2)
+        else: 
+            raise ValueError("Выбранный алгоритм для сравнения недоступен.")
+
+    def _document_similarity_idf(self, doc_idx1: int, doc_idx2: int = None):
+        if doc_idx2 is None:
+            similarities = []
+            vec1 = self.doc_vectors[doc_idx1]
+
+            for i, vec2 in enumerate(self.doc_vectors):
+                if i == doc_idx1:
+                    continue
+                if np.all(vec1 == 0) or np.all(vec2 == 0):
+                    sim = 0.0
+                else:
+                    norm1 = np.linalg.norm(vec1)
+                    norm2 = np.linalg.norm(vec2)
+                    if norm1 == 0 or norm2 == 0:
+                        sim = 0.0
+                    else:
+                        sim = np.dot(vec1 / norm1, vec2 / norm2)
+                        sim = (max(-1.0, min(1.0, sim)) + 1) / 2
+                similarities.append((i, sim))
+
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            return similarities
+
         vec1 = self.doc_vectors[doc_idx1]
         vec2 = self.doc_vectors[doc_idx2]
         
@@ -94,10 +134,34 @@ class LatentSemanticAnalyzer:
         vec2_norm = vec2 / norm2
         
         similarity = np.dot(vec1_norm, vec2_norm)
-        
         similarity = max(-1.0, min(1.0, similarity))
         
         return (similarity + 1) / 2
+
+    def _document_similarity_w2v(self, doc_idx1: int, doc_idx2: int = None):
+        """
+        Проверяет схожесть документов, используя только Word2Vec.
+        Если указан один индекс — возвращает top_n похожих документов.
+        """
+        if self.w2v_model is None:
+            raise ValueError("Модель Word2Vec не обучена. Сначала вызовите fit().")
+
+        if doc_idx2 is not None:
+            v1 = self._get_document_vector_word2vec(doc_idx1)
+            v2 = self._get_document_vector_word2vec(doc_idx2)
+            if np.all(v1 == 0) or np.all(v2 == 0):
+                return 0.0
+            sim = 1 - cosine(v1, v2)
+            return max(0.0, sim)
+
+        sims = []
+        for i in range(len(self.words)):
+            if i == doc_idx1:
+                continue
+            sim = self._document_similarity_w2v(doc_idx1, i)
+            sims.append((i, sim))
+        sims.sort(key=lambda x: x[1], reverse=True)
+        return sims
 
     def _build_vocabulary_with_filtering(self):
         """
@@ -185,3 +249,41 @@ class LatentSemanticAnalyzer:
                 self.words.append(normalized_words)
         if not self.words:
             raise ValueError("Корпус после нормализации пуст")
+
+    def _train_word2vec(self, vector_size=300, window=5, min_count=1):
+        """
+        Обучение Word2Vec для корпуса документов.
+        """
+        if not self.words:
+            raise ValueError("Модель Word2Vec не обучена. Сначала вызовите fit().")
+ 
+        model = Word2Vec(
+            sentences=self.words,
+            vector_size=vector_size,
+            window=window,
+            min_count=min_count,
+            workers=multiprocessing.cpu_count(),
+            sg=1
+        )
+
+        self.w2v_model = model.wv
+
+    def _get_document_vector_word2vec(self, doc_idx: int):
+        """
+        Возвращает усреднённый вектор документа по обученной или предобученной модели Word2Vec.
+        """
+        if self.w2v_model is None:
+            raise ValueError("Модель Word2Vec не обучена. Сначала вызовите fit().")
+
+        kv = self.w2v_model
+
+        words = [w.lower() for w in self.words[doc_idx] if isinstance(w, str)]
+        found_words = [w for w in words if w in kv.key_to_index]
+
+        if not found_words:
+            return np.zeros(kv.vector_size)
+
+        vectors = np.array([kv[w] for w in found_words])
+        avg_vector = np.mean(vectors, axis=0)
+
+        return avg_vector

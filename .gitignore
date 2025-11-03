@@ -1,2 +1,4 @@
 src/__pycache__
 src/mystem_bin
+src/*.bin
+src/*.txt
