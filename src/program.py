@@ -82,11 +82,14 @@ class Program:
                     print("\nДля сравнения требуется хотя бы два документа")
                 elif lsa.doc_vectors is not None:
                     try:
-                        print(f"\nСхожесть документа {doc_names[0]} с:")
                         top_docs = lsa.document_similarity(compare_mode, 0)
-                        for rank, (idx, sim) in enumerate(top_docs, 1):
-                            name = doc_names[idx] if idx < len(doc_names) else f"документ {idx+1}"
-                            print(f"{rank}. {name} (схожесть: {sim:.3f})")
+                        if (top_docs):
+                            print(f"\nСхожесть документа {doc_names[0]} с:")
+                            for rank, (idx, sim) in enumerate(top_docs, 1):
+                                name = doc_names[idx] if idx < len(doc_names) else f"документ {idx+1}"
+                                print(f"{rank}. {name} (схожесть: {sim:.3f})")
+                        else:
+                            print("\nНевозможно вывести схожесть документа с другими, так как анализатор не воспринял ни одного документа для сравнения. Возможно, в документе отсутствуют русские слова и символы, либо документ состоит из необрабатываемых символов.")
                     except Exception as e:
                         print(f"\nОшибка при поиске похожих документов: {e}")
                 else:

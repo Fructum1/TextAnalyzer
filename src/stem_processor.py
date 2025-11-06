@@ -1,16 +1,13 @@
 import asyncio
 import json
-import subprocess
 import re
 import platform
 import zipfile
 import tarfile
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from dataclasses import dataclass
-import sys
 import os
 import urllib.request
-import shutil
 
 
 @dataclass
@@ -270,7 +267,8 @@ class MyStemProcessor:
         if os.path.exists(mystem_bin_dir):
             for file in os.listdir(mystem_bin_dir):
                 file_path = os.path.join(mystem_bin_dir, file)
-                if os.path.isfile(file_path):
+                if (os.path.isfile(file_path) and 
+                    not file.endswith(('.zip', '.tar.gz', '.gz'))):
                     if system == "windows" and file.endswith('.exe'):
                         possible_paths.append(file_path)
                     elif system != "windows" and not file.endswith('.exe'):
@@ -284,7 +282,8 @@ class MyStemProcessor:
                 if system != "windows" and not os.access(path, os.X_OK):
                     try:
                         os.chmod(path, 0o755)
-                    except:
+                    except Exception as ex:
+                        print(f"Не удалось сделать файл стеммера исполняемым. {ex}.")
                         continue
                 return path
         
