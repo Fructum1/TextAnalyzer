@@ -11,7 +11,6 @@ class RussianNormalizer:
     async def normalize(self, tokens: Iterable[Token]) -> List[Token]:
         from tokenizer import Token
         from stem_processor import MyStemProcessor
-        
         my_stem_processor = MyStemProcessor()
         
         words_to_process = [token.value for token in tokens]

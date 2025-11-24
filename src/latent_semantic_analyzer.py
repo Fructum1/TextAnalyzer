@@ -8,6 +8,7 @@ from gensim.models import Word2Vec, KeyedVectors
 import multiprocessing
 import asyncio
 import gensim.downloader as api
+from DocumentSimilarityRNN import DocumentSimilarityRNN
 import os
 
 class LatentSemanticAnalyzer:
@@ -83,7 +84,7 @@ class LatentSemanticAnalyzer:
             words_str = ", ".join([f"{word}({weight:.3f})" for word, weight in topic_words])
             print(f"  Тема {topic_idx+1}: {words_str}")
 
-    def document_similarity(self, method: str, doc_idx1: int, doc_idx2: int = None):
+    async def document_similarity(self, method: str, doc_idx1: int, doc_idx2: int = None):
         """
         Считает схожесть между двумя документами.
         Если указан только doc_idx1 — выводит топ-N наиболее похожих документов.
@@ -92,8 +93,25 @@ class LatentSemanticAnalyzer:
             return self._document_similarity_idf(doc_idx1, doc_idx2)
         elif method == "w2v":
             return self._document_similarity_w2v(doc_idx1, doc_idx2)
+        elif method == "rnn":
+            return await self._document_similarity_rnn(doc_idx1, doc_idx2)
         else: 
             raise ValueError("Выбранный алгоритм для сравнения недоступен.")
+
+    async def _document_similarity_rnn(self, doc_idx1: int, doc_idx2: int = None):
+        model = DocumentSimilarityRNN()
+        model.load("model.keras")
+        if (doc_idx2 is not None):
+                return await model.predict_similarity(self.documents[doc_idx1], self.documents[doc_idx2])
+        else:
+            sims = []
+            for i in range(len(self.words)):
+                if i == doc_idx1:
+                    continue
+                (simProb, isSim) = await model.predict_similarity(self.documents[doc_idx1], self.documents[i])
+                sims.append((i, simProb))
+            sims.sort(key=lambda x: x[1], reverse=True)
+            return sims
 
     def _document_similarity_idf(self, doc_idx1: int, doc_idx2: int = None):
         if doc_idx2 is None:

@@ -60,8 +60,6 @@ class Program:
         if not documents:
             raise ValueError("Не удалось получить тексты для анализа. Укажите хотя бы один ввод с -f, -i, -f2 или -i2")
 
-        print(f"\nАнализируем документы...")
-
         if 'sentiment' in modes:
             sentiment_analyzer = SentimentAnalyzer()
             for idx, text in enumerate(documents, 1):
@@ -82,7 +80,7 @@ class Program:
                     print("\nДля сравнения требуется хотя бы два документа")
                 elif lsa.doc_vectors is not None:
                     try:
-                        top_docs = lsa.document_similarity(compare_mode, 0)
+                        top_docs = await lsa.document_similarity(compare_mode, 0)
                         if (top_docs):
                             print(f"\nСхожесть документа {doc_names[0]} с:")
                             for rank, (idx, sim) in enumerate(top_docs, 1):
@@ -136,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, required=True, help="Режим анализа: 'sentiment', 'lsa' или 'sentiment,lsa'")
     parser.add_argument('-f', '--file', type=str, help="Путь к первому файлу с текстом")
     parser.add_argument('-i', '--input', type=str, help="Первая входная строка для анализа")
-    parser.add_argument('--compare', type=str, help="Параметр для вывода схожести документов (доступные алгоритмы tdidf/w2v)")
+    parser.add_argument('--compare', type=str, help="Параметр для вывода схожести документов (доступные алгоритмы tdidf/w2v/rnn)")
     parser.add_argument('-f2', '--file2', type=str, nargs='*', help="Пути к дополнительным файлам с текстом")
     parser.add_argument('-i2', '--input2', type=str, nargs='*', help="Дополнительные входные строки для анализа")
     parser.add_argument('--num-topics', type=int, default=2, help="Количество тем для LSA анализа (по умолчанию 2)")
