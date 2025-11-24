@@ -98,8 +98,10 @@ h5py
 
 <img width="958" height="682" alt="image" src="https://github.com/user-attachments/assets/9a6d157f-a77c-4424-b2b3-df0273de4533" />
 
-**Как видно из примеров ниже, то Word2Vec лучше понял контекст, так, текст про кошку оказался не таким уж похожим на текст про собаку и города. Когда TD-IDF выделил их похожими на половину**
+**Как видно из примеров ниже, то Word2Vec лучше понял контекст, так, текст про кошку оказался не таким уж похожим на текст про собаку и города. Когда TD-IDF выделил их похожими на половину. А вот RNN наоборот, нашел схожий контекст текстов про собаку и кота из-за темы "Питомцы" и увеличил схожесть с текстами о городах (это скорее всего последствия неподходящего/неправильной тематики обучающего датасета)**
 
 <img width="1504" height="478" alt="2" src="https://github.com/user-attachments/assets/089cb50a-e14c-417c-9eb9-2b6a017c4b8e" />
 <img width="1504" height="487" alt="1" src="https://github.com/user-attachments/assets/ac9b0f4b-6184-4acc-bb62-fb6790ec16c1" />
+<img width="1572" height="660" alt="image" src="https://github.com/user-attachments/assets/d0486aef-6cd6-4725-96c3-51dac324524b" />
+
 
