@@ -127,6 +127,7 @@ h5py
 
 **Пример генерации текста на основе выделенной темы**
 
+<img width="1035" height="255" alt="f" src="https://github.com/user-attachments/assets/cd2acb62-ecea-499e-a06a-890a1793b75e" />
 
 
 
