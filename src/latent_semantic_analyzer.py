@@ -2,17 +2,15 @@ import numpy as np
 from scipy.linalg import svd
 from scipy.spatial.distance import cosine
 from collections import Counter
-from tokenizer import Token, TextTokenizerEnhanced
+from tokenizer import TextTokenizerEnhanced
 from normalizer import RussianNormalizer
-from gensim.models import Word2Vec, KeyedVectors
+from gensim.models import Word2Vec
 import multiprocessing
-import asyncio
-import gensim.downloader as api
 from DocumentSimilarityRNN import DocumentSimilarityRNN
-import os
+from lstm_seq2seq_tempalte import LSTMTemplateGenerator
 
 class LatentSemanticAnalyzer:
-    def __init__(self, documents: list[str], k = None, num_top_words: int = 10, min_df: int = 1, max_df: float = 1.0):
+    def __init__(self, documents: list[str], k = None, num_top_words: int = 10, min_df: int = 1, max_df: float = 1.0, template_model_path: str = "template_model"):
         """
         Иницизация класса LSA.
 
@@ -37,6 +35,16 @@ class LatentSemanticAnalyzer:
         self.sigma = None
         self.Vt_k = None
         self.w2v_model = None
+
+        self.template_generator = None
+        if template_model_path:
+            try:
+                self.template_generator = LSTMTemplateGenerator(template_model_path)
+            except Exception as e:
+                print(f"Ошибка загрузки LSTM модели: {e}")
+                self.template_generator = LSTMTemplateGenerator()
+        else:
+            self.template_generator = LSTMTemplateGenerator()
 
     async def fit(self):
         """
@@ -66,23 +74,57 @@ class LatentSemanticAnalyzer:
         
         return top_words
 
-    def print_results(self, num_top_words: int = 5):
+    def print_results(self, num_top_words: int = 5, mode: str = "both"):
         """
-        Читаемый вывод результатов.
+        Вывод результатов LSA с разными режимами.
+        
+        Args:
+            num_top_words: Количество топ-слов для вывода
+            mode: Режим вывода:
+                - "topics": Вывод LSA тем (по умолчанию)
+                - "documents": Классификация документов с шаблонами
+                - "both": Оба режима
+            template_generation: Использовать LSTM генерацию шаблонов
         """
 
-        print(f"Использовано {self.k} тем")
-        print(f"Размер словаря: {len(self.word_to_idx)} слов")
+        def lsa_print():
+            print("-- Выделение тем с использованием LSA: --")
+            print(f" Использовано {self.k} тем")
+            print(f" Размер словаря: {len(self.word_to_idx)} слов")
+            
+            print(f"\n Сингулярные значения (важность тем):")
+            for i, sigma in enumerate(self.sigma):
+                print(f"  Тема {i+1}: {sigma:.4f}")
+            
+            print(f"\n Топ-слова по темам:")
+            for topic_idx in range(self.k):
+                topic_words = self.get_topic_words(topic_idx, num_top_words)
+                words_str = ", ".join([f"{word}({weight:.3f})" for word, weight in topic_words])
+                print(f"  Тема {topic_idx+1}: {words_str}")
+
+        def with_new_doc_generation():
+            print("\n-- Генерация текста с помощью LSTM & seq2seq: --")
+            for doc_idx, document in enumerate(self.documents[:5]):
+                print(f" Документ {doc_idx + 1}:")
+                
+                generated_text, theme, _ = self.template_generator.generate_for_document(
+                    document
+                )
+
+                if (theme is None):
+                    print(f"  Не удалось однозначно определить тему.")
+                else:
+                    print(f"  Тема: {theme}")
+                    print(f"  Сгенерированный текст по теме: {generated_text}")
+
+        if mode == "topics":
+            lsa_print()
+        elif mode == "documents":
+            with_new_doc_generation()
         
-        print(f"\nСингулярные значения (важность тем):")
-        for i, sigma in enumerate(self.sigma):
-            print(f"  Тема {i+1}: {sigma:.4f}")
-        
-        print(f"\nТоп-слова по темам:")
-        for topic_idx in range(self.k):
-            topic_words = self.get_topic_words(topic_idx, num_top_words)
-            words_str = ", ".join([f"{word}({weight:.3f})" for word, weight in topic_words])
-            print(f"  Тема {topic_idx+1}: {words_str}")
+        if mode == "both" and len(self.documents) > 1:
+            lsa_print()
+            with_new_doc_generation()
 
     async def document_similarity(self, method: str, doc_idx1: int, doc_idx2: int = None):
         """
