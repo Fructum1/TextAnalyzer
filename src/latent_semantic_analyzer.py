@@ -122,7 +122,7 @@ class LatentSemanticAnalyzer:
         elif mode == "documents":
             with_new_doc_generation()
         
-        if mode == "both" and len(self.documents) > 1:
+        if mode == "both":
             lsa_print()
             with_new_doc_generation()
 
